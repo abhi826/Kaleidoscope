@@ -198,7 +198,7 @@ static std::unique_ptr<ExprAST> ParseExpression();
 static std::unique_ptr<ExprAST> ParseNumberExpr() {
   auto Result = std::make_unique<NumberExprAST>(NumVal);
   getNextToken(); // consume the number
-  return std::move(Result);
+  return Result;
 }
 
 /// parenexpr ::= '(' expression ')'
@@ -271,6 +271,30 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
 ///   ::= ('+' primary)*
 static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
                                               std::unique_ptr<ExprAST> LHS) {
+
+  /*
+  a+b+(c+d)*e*f+g
+  The Expressions would be
+  LHS = [a+b]
+  RHS = [(c+d)*e*f]
+
+  LHS = [a+b+(c+d)*e*f]
+  RHS = [+g]
+  
+  Each recursive call to ParseBinOpRHS is for a different expression(subcomponent of the whole line). For example, in the first call
+  it eats up +b and creates an BinaryExprAST for a+b. This becomes the LHS and then it attempts to do
+  +(c+d) but there is a * after, so it recursively calls ParseBinOpRHS with LHS as (c+d) and ExprPrec
+  as the operator precedence value for +. When the recursive call sees an operator with precedence 
+  less than or equal to + it will return. Otherwise, it will keep extending the expression. In the recursive
+  call the expression will be [(c+d)*e*f] before it sees a '+' and returns. 
+  so (a+b) will be LHS and [(c+d)*e*f] will be rhs and they will be combined to one expr. Lastly, the +g is added.
+
+  The ExprPrec serves as the precedence value of the operator before the start of the current expression, and the 
+  expression will stop extending once it gets to an operator less than or equal to that value.
+
+   When it does 'ParseBinOpRHS(TokPrec + 1, std::move(RHS));' it adds the +1 so that if the expression gets to an operator
+   that is the same as the operator before the expression, it will stop extending the expression and return.
+  */
   // If this is a binop, find its precedence.
   while (true) {
     int TokPrec = GetTokPrecedence();
